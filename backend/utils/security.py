@@ -15,7 +15,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440
 def get_password_hash(password: str) -> str:
     # Pre-hash with SHA256 to allow infinite password lengths securely (bypasses 72 byte limit)
     pwd_sha256 = hashlib.sha256(password.encode()).hexdigest().encode()
-    salt = bcrypt.gensalt()
+    salt = bcrypt.gensalt(rounds=8)
     return bcrypt.hashpw(pwd_sha256, salt).decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

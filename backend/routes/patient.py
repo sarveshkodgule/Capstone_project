@@ -1,4 +1,4 @@
-    from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from schemas.patient import PatientRiskInput
 from utils.dependencies import get_current_user
