@@ -6,10 +6,12 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 from PIL import Image
 import torch.nn.functional as F
+import pandas as pd
+from sklearn.model_selection import train_test_split
 
-# 1. Define the exact same CNN architecture used in the backend
+# 1. Define the exact same CNN architecture used in the backend (2 classes)
 class FundusCNN(nn.Module):
-    def __init__(self, num_classes=5):
+    def __init__(self, num_classes=2):
         super(FundusCNN, self).__init__()
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
@@ -54,8 +56,8 @@ def train_model(train_loader, val_loader, num_epochs=10, learning_rate=0.001):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
     
-    # Initialize Model, Loss Function, and Optimizer
-    model = FundusCNN(num_classes=5).to(device)
+    # Initialize Model, Loss Function, and Optimizer (num_classes=2)
+    model = FundusCNN(num_classes=2).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     
@@ -86,9 +88,9 @@ def train_model(train_loader, val_loader, num_epochs=10, learning_rate=0.001):
         epoch_loss = running_loss / len(train_loader.dataset)
         epoch_acc = (correct / total) * 100
         
-        print(f"Epoch [{epoch+1}/{num_epochs}] - Loss: {epoch_loss:.4f} - Accuracy: {epoch_acc:.2f}%")
+        print(f"Epoch [{epoch+1}/{num_epochs}] - Train Loss: {epoch_loss:.4f} - Train Accuracy: {epoch_acc:.2f}%")
         
-        # (Optional) Validate model performance
+        # Validate model performance
         if val_loader:
             model.eval()
             val_loss = 0.0
@@ -113,38 +115,61 @@ def train_model(train_loader, val_loader, num_epochs=10, learning_rate=0.001):
     print("Model successfully trained and saved as 'models/fundus_cnn.pth'!")
 
 if __name__ == "__main__":
-    print("=== PyTorch CNN Training Script ===")
-    print("To train on a real dataset, populate the `image_paths` and `labels` lists with your dataset.")
-    print("Running a mock training dry run to test CUDA performance...")
+    print("=== Training CNN on Kaggle PALM Dataset ===")
     
-    # Preprocessing transforms (Resize, Normalize)
+    # 1. Paths configuration
+    dataset_base = r"c:\Users\Sarvesh Kodgule\Desktop\Studdyyy\capstone\PALM\PALM\Training"
+    excel_path = os.path.join(dataset_base, "Classification Labels.xlsx")
+    images_dir = os.path.join(dataset_base, "Images")
+    
+    if not os.path.exists(excel_path):
+        print(f"Error: Could not find labels file at {excel_path}")
+        exit(1)
+    if not os.path.exists(images_dir):
+        print(f"Error: Could not find images directory at {images_dir}")
+        exit(1)
+        
+    # 2. Read Labels Excel
+    print("Loading labels sheet...")
+    df = pd.read_excel(excel_path)
+    
+    image_paths = []
+    labels = []
+    
+    # Iterate and construct full image paths
+    for idx, row in df.iterrows():
+        img_name = row['imgName']
+        label = int(row['Label'])
+        
+        full_img_path = os.path.join(images_dir, img_name)
+        if os.path.exists(full_img_path):
+            image_paths.append(full_img_path)
+            labels.append(label)
+        else:
+            print(f"Warning: Image file not found {full_img_path}")
+            
+    print(f"Found {len(image_paths)} valid fundus scan images.")
+    
+    # 3. Train-Test Split (80% Train, 20% Validation)
+    train_paths, val_paths, train_labels, val_labels = train_test_split(
+        image_paths, labels, test_size=0.2, random_state=42, stratify=labels
+    )
+    
+    # 4. Preprocessing transforms (Resize, Normalize)
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
-    # Create random synthetic data representing 100 images
-    import numpy as np
-    import tempfile
+    # 5. Create PyTorch datasets and loaders
+    train_dataset = MyopiaDataset(train_paths, train_labels, transform=transform)
+    val_dataset = MyopiaDataset(val_paths, val_labels, transform=transform)
     
-    # Setup temporary images to test the actual dataset loader pipeline
-    with tempfile.TemporaryDirectory() as temp_dir:
-        mock_paths = []
-        mock_labels = []
-        for i in range(50):
-            # Create a random RGB image and save it
-            arr = np.random.randint(0, 256, (300, 300, 3), dtype=np.uint8)
-            img = Image.fromarray(arr)
-            path = os.path.join(temp_dir, f"mock_img_{i}.jpg")
-            img.save(path)
-            mock_paths.append(path)
-            # Random label 0-4
-            mock_labels.append(np.random.randint(0, 5))
-            
-        # Create DataLoaders
-        dataset = MyopiaDataset(mock_paths, mock_labels, transform=transform)
-        train_loader = DataLoader(dataset, batch_size=8, shuffle=True)
-        
-        # Run 2 epochs to verify it works on GPU
-        train_model(train_loader, val_loader=None, num_epochs=2, learning_rate=0.001)
+    # Recommended batch size 32 for RTX 3050 6GB
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    
+    print(f"Starting training: {len(train_dataset)} train samples, {len(val_dataset)} validation samples.")
+    # Train for 10 epochs
+    train_model(train_loader, val_loader, num_epochs=10, learning_rate=0.001)

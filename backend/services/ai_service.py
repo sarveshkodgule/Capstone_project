@@ -15,7 +15,7 @@ MODELS_DIR = Path(__file__).parent.parent / "models"
 
 # ── CNN Model Definition ─────────────────────────────────────────────────────
 class FundusCNN(nn.Module):
-    def __init__(self, num_classes=5):
+    def __init__(self, num_classes=2):
         super(FundusCNN, self).__init__()
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
@@ -43,7 +43,7 @@ def _load_cnn_model():
         return True
     try:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        _cnn_model = FundusCNN(num_classes=5)
+        _cnn_model = FundusCNN(num_classes=2)
         model_path = MODELS_DIR / "fundus_cnn.pth"
         if model_path.exists():
             _cnn_model.load_state_dict(torch.load(model_path, map_location=device))
@@ -80,19 +80,13 @@ def _load_doctor_models():
         return False
 
 MYOPIA_CLASSES = {
-    0: "Normal Fundus (No Myopia)",
-    1: "Tessellated Fundus (Zone 1 Myopia)",
-    2: "Diffuse Chorioretinal Atrophy (Zone 2 Myopia)",
-    3: "Patchy Chorioretinal Atrophy (Zone 3 Myopia)",
-    4: "Macular Atrophy (Zone 4 Myopia)"
+    0: "Normal Fundus (Non-Pathological)",
+    1: "Pathological Myopia (High Risk)"
 }
 
 MYOPIA_FINDINGS = {
-    0: ["Normal macular morphology", "Optic disc margins clear", "No tessellation detected"],
-    1: ["Mild tessellated fundus observed", "Peripapillary atrophy (minor)", "No major choroidal thinning"],
-    2: ["Diffuse chorioretinal atrophy", "Tessellated fundus observed", "Optic crescent formation"],
-    3: ["Patchy chorioretinal atrophy", "Optic disc crescent progression", "Localized choroidal thinning"],
-    4: ["Severe macular atrophy", "Macular hemorrhages / Lacquer cracks suspected", "Severe choroidal thinning"]
+    0: ["Normal macular morphology", "Optic disc margins clear", "No pathological lesions detected"],
+    1: ["Pathological Myopia detected", "Chorioretinal atrophy lesions observed", "Optic disc crescent progression"]
 }
 
 def predict_image(image_bytes: bytes) -> dict:
