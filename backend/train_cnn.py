@@ -9,9 +9,9 @@ import torch.nn.functional as F
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-# 1. Define the exact same CNN architecture used in the backend (2 classes)
+# 1. Define the exact same CNN architecture used in the backend (3 classes)
 class FundusCNN(nn.Module):
-    def __init__(self, num_classes=2):
+    def __init__(self, num_classes=3):
         super(FundusCNN, self).__init__()
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
@@ -56,8 +56,8 @@ def train_model(train_loader, val_loader, num_epochs=10, learning_rate=0.001):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
     
-    # Initialize Model, Loss Function, and Optimizer (num_classes=2)
-    model = FundusCNN(num_classes=2).to(device)
+    # Initialize Model, Loss Function, and Optimizer (num_classes=3)
+    model = FundusCNN(num_classes=3).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     
@@ -115,7 +115,7 @@ def train_model(train_loader, val_loader, num_epochs=10, learning_rate=0.001):
     print("Model successfully trained and saved as 'models/fundus_cnn.pth'!")
 
 if __name__ == "__main__":
-    print("=== Training CNN on Kaggle PALM Dataset ===")
+    print("=== Training 3-Class CNN on Kaggle PALM Dataset ===")
     
     # 1. Paths configuration
     dataset_base = r"c:\Users\Sarvesh Kodgule\Desktop\Studdyyy\capstone\PALM\PALM\Training"
@@ -137,10 +137,22 @@ if __name__ == "__main__":
     labels = []
     
     # Iterate and construct full image paths
+    # Map to 3 classes using filename prefixes:
+    # H -> 0 (Normal)
+    # N -> 1 (Low Risk)
+    # P -> 2 (High Risk)
     for idx, row in df.iterrows():
         img_name = row['imgName']
-        label = int(row['Label'])
         
+        if img_name.startswith("H"):
+            label = 0
+        elif img_name.startswith("N"):
+            label = 1
+        elif img_name.startswith("P"):
+            label = 2
+        else:
+            label = 1 # Fallback
+            
         full_img_path = os.path.join(images_dir, img_name)
         if os.path.exists(full_img_path):
             image_paths.append(full_img_path)
@@ -149,24 +161,40 @@ if __name__ == "__main__":
             print(f"Warning: Image file not found {full_img_path}")
             
     print(f"Found {len(image_paths)} valid fundus scan images.")
+    # Print class counts
+    class_counts = pd.Series(labels).value_counts()
+    print("Class distribution:")
+    print(f"  Class 0 (Normal):    {class_counts.get(0, 0)} images")
+    print(f"  Class 1 (Low Risk):  {class_counts.get(1, 0)} images")
+    print(f"  Class 2 (High Risk): {class_counts.get(2, 0)} images")
     
     # 3. Train-Test Split (80% Train, 20% Validation)
     train_paths, val_paths, train_labels, val_labels = train_test_split(
         image_paths, labels, test_size=0.2, random_state=42, stratify=labels
     )
     
-    # 4. Preprocessing transforms (Resize, Normalize)
-    transform = transforms.Compose([
+    # 4. Training transforms with Data Augmentation (to reduce bias and overfitting)
+    train_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.5),
+        transforms.RandomRotation(degrees=20),
+        transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.15),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    # Validation transforms (No augmentation)
+    val_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
     # 5. Create PyTorch datasets and loaders
-    train_dataset = MyopiaDataset(train_paths, train_labels, transform=transform)
-    val_dataset = MyopiaDataset(val_paths, val_labels, transform=transform)
+    train_dataset = MyopiaDataset(train_paths, train_labels, transform=train_transform)
+    val_dataset = MyopiaDataset(val_paths, val_labels, transform=val_transform)
     
-    # Recommended batch size 32 for RTX 3050 6GB
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
