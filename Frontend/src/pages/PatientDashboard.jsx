@@ -29,6 +29,25 @@ export default function PatientDashboard() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', email: '' });
   
+  const [history, setHistory] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  
+  const fetchPatientData = async () => {
+    setHistoryLoading(true);
+    try {
+      const histRes = await api.get('/patient/history');
+      if (histRes && histRes.data) setHistory(histRes.data);
+      
+      const repRes = await api.get('/patient/reports');
+      if (repRes && repRes.data) setReports(repRes.data);
+    } catch (err) {
+      console.error("Failed to fetch patient records", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+  
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -42,6 +61,7 @@ export default function PatientDashboard() {
       }
     };
     fetchProfile();
+    fetchPatientData();
   }, []);
 
   // Fetch available doctors for patient assignment
@@ -97,6 +117,11 @@ export default function PatientDashboard() {
 
       if (response && response.data && response.data.risk_level) {
         const d = response.data;
+        
+        // Construct dynamic historical trend line
+        const baseTrend = [40, 45, 50, 60, 68];
+        const newScore = d.risk_level === "High" ? 85 : d.risk_level === "Medium" ? 55 : 20;
+        
         setResult({
           patientName: formData.name || profile.name || "Patient",
           patientGender: formData.gender,
@@ -104,14 +129,16 @@ export default function PatientDashboard() {
           date: new Date().toLocaleDateString(),
           detection: d.risk_level + " Risk for Myopia",
           severity: d.risk_level,
-          riskScore: d.risk_level === "High" ? 85 : d.risk_level === "Medium" ? 55 : 20,
-          trendData: [40, 45, 50, 60, 68, d.risk_level === "High" ? 85 : d.risk_level === "Medium" ? 55 : 20],
+          riskScore: newScore,
+          trendData: [...baseTrend, newScore],
           recommendations: d.recommendation ? [d.recommendation] : ["Maintain a healthy eye routine."],
-          // ML model outputs
           myopiaDetected:   d.myopia_detected   ?? null,
           probability:      d.myopia_probability ?? null,
           nextSpheq:        d.predicted_next_spheq ?? null,
         });
+        
+        // Refresh patient's history list
+        fetchPatientData();
       }
     } catch (err) {
       console.error(err);
@@ -148,6 +175,85 @@ export default function PatientDashboard() {
     }]
   };
 
+  // Sort reports chronologically for biometry progression trend
+  const sortedReports = [...reports].reverse();
+  const biometryLabels = sortedReports.map(r => 
+    new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
+  );
+  const spheqData = sortedReports.map(r => r.refractive_error ?? -1.0);
+  const alData = sortedReports.map(r => r.axial_length ?? 24.0);
+
+  const biometryChartData = {
+    labels: biometryLabels.length > 0 ? biometryLabels : ['No Data'],
+    datasets: [
+      {
+        label: 'Refractive Error (SPHEQ - Diopters)',
+        data: spheqData.length > 0 ? spheqData : [0],
+        borderColor: '#EF4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.05)',
+        yAxisID: 'ySpheq',
+        tension: 0.3,
+        borderWidth: 3,
+        pointBackgroundColor: '#EF4444',
+      },
+      {
+        label: 'Axial Length (AL - mm)',
+        data: alData.length > 0 ? alData : [24],
+        borderColor: '#3B82F6',
+        backgroundColor: 'rgba(59, 130, 246, 0.05)',
+        yAxisID: 'yAl',
+        tension: 0.3,
+        borderWidth: 3,
+        pointBackgroundColor: '#3B82F6',
+      }
+    ]
+  };
+
+  const biometryChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: { font: { weight: 'bold' } }
+      }
+    },
+    scales: {
+      ySpheq: {
+        type: 'linear',
+        position: 'left',
+        title: { display: true, text: 'Refractive Error (D)', color: '#EF4444', font: { weight: 'bold' } },
+        grid: { color: '#f1f5f9' },
+      },
+      yAl: {
+        type: 'linear',
+        position: 'right',
+        title: { display: true, text: 'Axial Length (mm)', color: '#3B82F6', font: { weight: 'bold' } },
+        grid: { drawOnChartArea: false },
+      }
+    }
+  };
+
+  const downloadReportPdf = async (patientId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://127.0.0.1:8000/patient/generate-report/${patientId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `myopia_report_${patientId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err) {
+      console.error("Failed to download PDF", err);
+      alert("Error exporting report as PDF.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50/50 to-slate-100 flex flex-col relative pb-20">
       <nav className="bg-white/80 backdrop-blur-md border-b px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-sm">
@@ -159,9 +265,24 @@ export default function PatientDashboard() {
             Patient Portal
           </h1>
         </div>
-        <div className="flex items-center space-x-3">
-          <button onClick={() => setActiveTab(activeTab === 'profile' ? 'assessment' : 'profile')} className={`w-9 h-9 bg-gradient-to-tr from-blue-500 to-teal-400 rounded-full flex items-center justify-center text-white font-bold cursor-pointer transition-all ${activeTab === 'profile' ? 'ring-2 ring-blue-600 ring-offset-2' : 'shadow-md hover:shadow-lg'}`}>
-            P
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={() => { setActiveTab('assessment'); setResult(null); }} 
+            className={`text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${activeTab === 'assessment' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:text-slate-800'}`}
+          >
+            New Assessment
+          </button>
+          <button 
+            onClick={() => setActiveTab('history')} 
+            className={`text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${activeTab === 'history' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:text-slate-800'}`}
+          >
+            Screening History
+          </button>
+          <button 
+            onClick={() => setActiveTab('profile')} 
+            className={`w-9 h-9 bg-gradient-to-tr from-blue-500 to-teal-400 rounded-full flex items-center justify-center text-white font-bold cursor-pointer transition-all ${activeTab === 'profile' ? 'ring-2 ring-blue-600 ring-offset-2' : 'shadow-md hover:shadow-lg'}`}
+          >
+            {profile.name.charAt(0).toUpperCase()}
           </button>
         </div>
       </nav>
@@ -228,6 +349,116 @@ export default function PatientDashboard() {
                     <button onClick={() => setIsEditingProfile(true)} className="bg-slate-100 text-slate-600 px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors">Edit Profile</button>
                   )}
                 </div>
+              </div>
+            </div>
+          </motion.div>
+        ) : activeTab === 'history' ? (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            className="max-w-4xl mx-auto mt-4 space-y-8 pb-10"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800">Your Screening & Diagnostic History</h2>
+                <p className="text-slate-500 text-sm mt-1">Track your lifestyle screenings and doctor evaluations.</p>
+              </div>
+            </div>
+
+            {/* Progression Curve Mapping */}
+            {reports.length > 0 ? (
+              <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+                  <Activity className="w-5 h-5 mr-2 text-red-500 animate-pulse" /> Myopia Progression Curve (Axial Length vs SPHEQ)
+                </h3>
+                <div className="h-[280px] w-full">
+                  <Line data={biometryChartData} options={biometryChartOptions} />
+                </div>
+              </div>
+            ) : (
+              <div className="bg-blue-50/50 rounded-2xl p-6 border border-blue-100 text-center">
+                <h3 className="text-md font-bold text-blue-800 mb-1">No Clinical Evaluation Curve Yet</h3>
+                <p className="text-sm text-slate-600">Once your doctor completes a fundus image scan and clinical biometry assessment, your progression curve will map here automatically.</p>
+              </div>
+            )}
+
+            {/* History Panels */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Doctor Clinical Reports */}
+              <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col">
+                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center border-b pb-3">
+                  📋 Doctor Clinical Reports ({reports.length})
+                </h3>
+                {reports.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-6 text-center">No clinical reports generated by doctors yet.</p>
+                ) : (
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
+                    {reports.map((rep) => (
+                      <div key={rep.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors flex flex-col space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-xs font-bold text-slate-400">{new Date(rep.created_at).toLocaleDateString()}</span>
+                            <div className="text-sm font-semibold text-slate-800 mt-0.5">Prediction: <span className="font-extrabold text-blue-600">{rep.prediction}</span></div>
+                          </div>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${rep.severity === 'High' ? 'bg-red-100 text-red-700' : rep.severity === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`}>
+                            {rep.severity} Risk
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {rep.axial_length && <span>Axial Length: <strong>{rep.axial_length} mm</strong></span>}
+                          {rep.refractive_error && <span className="ml-3">Refraction: <strong>{rep.refractive_error} D</strong></span>}
+                          {rep.doctor_verdict && (
+                            <div className="mt-1 text-slate-600 font-medium">
+                              🩺 Doctor Verdict: <span className="font-semibold text-indigo-700">{rep.doctor_verdict}</span>
+                            </div>
+                          )}
+                        </div>
+                        <button 
+                          onClick={() => downloadReportPdf(rep.patient_id)} 
+                          className="mt-2 inline-flex items-center justify-center text-xs font-bold text-blue-600 bg-blue-50 py-1.5 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5 mr-1" /> Download PDF Report
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Patient Self Lifestyle Screenings */}
+              <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col">
+                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center border-b pb-3">
+                  🏠 Lifestyle Screenings ({history.length})
+                </h3>
+                {history.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-6 text-center">No self-assessments generated yet.</p>
+                ) : (
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
+                    {history.map((hist) => (
+                      <div key={hist.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors flex flex-col space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-xs font-bold text-slate-400">{new Date(hist.created_at).toLocaleDateString()}</span>
+                            <div className="text-sm font-semibold text-slate-800 mt-0.5">Lifestyle Screening</div>
+                          </div>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${hist.risk_level === 'High' ? 'bg-red-100 text-red-700' : hist.risk_level === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`}>
+                            {hist.risk_level} Risk
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-500 grid grid-cols-3 gap-2 mt-1">
+                          <div>📱 Screen: <strong>{hist.screen_time}h</strong></div>
+                          <div>📖 Reading: <strong>{hist.reading_time}h</strong></div>
+                          <div>🌳 Outdoor: <strong>{hist.outdoor_activity}h</strong></div>
+                        </div>
+                        {hist.recommendation && (
+                          <div className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg mt-1 border border-amber-100/50">
+                            💡 {hist.recommendation}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
