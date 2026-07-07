@@ -1,12 +1,14 @@
 import os
 import json
 import urllib.request
+from dotenv import load_dotenv
 from database.mongodb import chat_history_collection
 from schemas.chatbot import ChatQuery
 from datetime import datetime
 
+load_dotenv(override=True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 
 def _call_gemini(prompt: str) -> str:

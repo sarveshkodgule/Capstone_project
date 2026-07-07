@@ -1,11 +1,19 @@
 import os
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms as transforms
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+    from torch.utils.data import Dataset, DataLoader
+    import torchvision.transforms as transforms
+    import torch.nn.functional as F
+except ImportError as e:
+    raise ImportError(
+        "PyTorch and torchvision are required to run this script. "
+        "Install them with `pip install torch torchvision`."
+    ) from e
+
 from PIL import Image
-import torch.nn.functional as F
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
