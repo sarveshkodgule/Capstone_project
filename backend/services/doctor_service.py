@@ -20,20 +20,15 @@ async def handle_image_upload(file: UploadFile):
 async def fetch_doctor_patients(doctor_id: str = None) -> List[Dict[str, Any]]:
     """
     Fetch patients assigned to a specific doctor.
-    Falls back to all patients if doctor_id is None (backwards compatibility).
+    Filters out invalid/incomplete records (where name is missing/empty).
     """
-    query = {}
+    query = {"name": {"$ne": None, "$gt": ""}}
     if doctor_id:
         # Show patients explicitly assigned to this doctor
-        query = {"assigned_doctor_id": doctor_id}
+        query["assigned_doctor_id"] = doctor_id
     
     patients_cursor = patients_collection.find(query)
     patients = await patients_cursor.to_list(length=1000)
-    
-    # If no patients found with assignment, fall back to unassigned ones too
-    if not patients and doctor_id:
-        unassigned_cursor = patients_collection.find({"assigned_doctor_id": None})
-        patients += await unassigned_cursor.to_list(length=1000)
     
     result = []
     for p in patients:

@@ -6,7 +6,11 @@ from database.mongodb import chat_history_collection
 from schemas.chatbot import ChatQuery
 from datetime import datetime
 
-load_dotenv(override=True)
+# Load .env explicitly using absolute path to prevent startup directory issues
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+env_path = os.path.join(base_dir, ".env")
+load_dotenv(dotenv_path=env_path, override=True)
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
