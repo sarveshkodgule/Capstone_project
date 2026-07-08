@@ -89,7 +89,8 @@ export default function PatientDashboard() {
 
   const handleSignOut = () => {
     localStorage.removeItem('token');
-    navigate('/login');
+    localStorage.removeItem('role');
+    navigate('/login', { replace: true });
   };
 
   const [chatMessage, setChatMessage] = useState("");

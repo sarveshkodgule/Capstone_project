@@ -27,6 +27,7 @@ export default function Login() {
       
       if (data.access_token) {
         localStorage.setItem('token', data.access_token);
+        localStorage.setItem('role', role);
         
         if (role === 'doctor') {
           navigate('/doctor/dashboard');

@@ -63,7 +63,8 @@ export default function DoctorDashboard() {
 
   const handleSignOut = () => {
     localStorage.removeItem('token');
-    navigate('/login');
+    localStorage.removeItem('role');
+    navigate('/login', { replace: true });
   };
 
   const [clinicalData, setClinicalData] = useState({
