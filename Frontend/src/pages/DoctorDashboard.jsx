@@ -132,6 +132,36 @@ export default function DoctorDashboard() {
     }
   }, [activeTab]);
 
+  // Automatically pre-populate clinical form with selected patient's reported lifestyle factors
+  useEffect(() => {
+    if (selectedPatient) {
+      setClinicalData(prev => ({
+        ...prev,
+        age: selectedPatient.age !== 'N/A' ? String(selectedPatient.age) : '',
+        readingHours: selectedPatient.reading_time != null ? String(selectedPatient.reading_time) : '',
+        screenTime: selectedPatient.screen_time != null ? String(selectedPatient.screen_time) : '',
+        outdoorActivity: selectedPatient.outdoor_activity != null ? String(selectedPatient.outdoor_activity) : '',
+        sleepHours: selectedPatient.sleep_hours != null ? String(selectedPatient.sleep_hours) : '',
+        parentalMyopia: selectedPatient.parental_myopia != null ? String(selectedPatient.parental_myopia) : '0',
+      }));
+    } else {
+      // Clear inputs if no patient selected
+      setClinicalData({
+        sphericalEq: '',
+        axialLength: '',
+        acd: '',
+        lt: '',
+        vcd: '',
+        iop: '',
+        age: '',
+        visitYear: new Date().getFullYear(),
+        readingHours: '', screenTime: '', outdoorActivity: '', sleepHours: '', 
+        parentalMyopia: '0',
+        doctorVerdict: 'Low'
+      });
+    }
+  }, [selectedPatient]);
+
   const handleFileUpload = async (e) => {
     e.preventDefault();
     if (e.target.files && e.target.files[0]) {
